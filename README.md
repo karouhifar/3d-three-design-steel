@@ -48,11 +48,20 @@ option is one field plus one control.
 
 ## Request Quote
 
-`components/quote/RequestQuote.tsx` opens an accessible modal and, on submit,
-`console.log`s the full `config` payload. Wire that to your API/CRM:
+`components/quote/RequestQuote.tsx` opens an accessible modal. The form uses
+**react-hook-form + zod** (`@hookform/resolvers`) for validation. On submit it
+POSTs `{ lead, config, summary, meta }` as JSON to the App Router API route
+`app/api/quote/route.ts`.
 
-```ts
-await fetch("/api/quote", { method: "POST", body: JSON.stringify(config) });
+The route re-validates with the **same** zod schema (`lib/quote-schema.ts` — the
+server is the source of truth), then forwards to your backend/CRM if
+`QUOTE_BACKEND_URL` is set (optional `QUOTE_BACKEND_TOKEN` → `Authorization:
+Bearer`). With no backend configured it logs and returns `{ ok: true }` so the
+form works end-to-end in dev. Responses: `200` ok · `422` validation_failed
+(with `issues`) · `502` backend error · `400` invalid JSON.
+
+```bash
+cp .env.example .env.local   # set QUOTE_BACKEND_URL to enable forwarding
 ```
 
 ## Notes

@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, FileText, X } from "lucide-react";
+import { CheckCircle2, FileText, X, Loader2, AlertCircle } from "lucide-react";
 import { useBuilding } from "@/lib/store";
+import { leadSchema, type LeadInput } from "@/lib/quote-schema";
+import { footprint, roofArea, countByType } from "@/lib/building";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -12,6 +16,17 @@ export function RequestQuote() {
   const { config } = useBuilding();
   const [open, setOpen] = React.useState(false);
   const [sent, setSent] = React.useState(false);
+  const [serverError, setServerError] = React.useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<LeadInput>({
+    resolver: zodResolver(leadSchema),
+    defaultValues: { name: "", email: "", phone: "", postal: "", notes: "" },
+  });
 
   // close on Escape
   React.useEffect(() => {
@@ -21,13 +36,47 @@ export function RequestQuote() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // Placeholder: hook up to your API / CRM here.
-    // The full `config` object is the payload to send.
-    // eslint-disable-next-line no-console
-    console.log("Request Quote payload:", config);
-    setSent(true);
+  function close() {
+    setOpen(false);
+  }
+
+  async function onSubmit(lead: LeadInput) {
+    setServerError(null);
+    const payload = {
+      lead,
+      config,
+      summary: {
+        footprintSqFt: footprint(config),
+        roofAreaSqFt: roofArea(config),
+        garageDoors: countByType(config.openings, "garage"),
+        manDoors: countByType(config.openings, "man"),
+        windows: countByType(config.openings, "window"),
+      },
+      meta: {
+        source: "3d-designer",
+        submittedAt: new Date().toISOString(),
+      },
+    };
+
+    try {
+      const res = await fetch("/api/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        setServerError(
+          res.status === 422
+            ? "Some details look invalid. Please review and try again."
+            : "We couldn't submit your request. Please try again shortly.",
+        );
+        return;
+      }
+      setSent(true);
+      reset();
+    } catch {
+      setServerError("Network error. Check your connection and try again.");
+    }
   }
 
   return (
@@ -47,7 +96,7 @@ export function RequestQuote() {
           >
             <div
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setOpen(false)}
+              onClick={close}
             />
             <motion.div
               role="dialog"
@@ -60,7 +109,7 @@ export function RequestQuote() {
               className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
             >
               <button
-                onClick={() => setOpen(false)}
+                onClick={close}
                 aria-label="Close"
                 className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
               >
@@ -70,17 +119,19 @@ export function RequestQuote() {
               {sent ? (
                 <div className="flex flex-col items-center py-6 text-center">
                   <CheckCircle2 className="h-12 w-12 text-primary" />
-                  <h3 className="mt-3 text-lg font-semibold">Request received</h3>
+                  <h3 className="mt-3 text-lg font-semibold">
+                    Request received
+                  </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Your building configuration has been captured. A specialist
-                    will reach out shortly.
+                    Your building configuration has been sent to North GTA
+                    Steel. A specialist will reach out shortly.
                   </p>
                   <Button
                     className="mt-5"
                     variant="outline"
                     onClick={() => {
                       setSent(false);
-                      setOpen(false);
+                      close();
                     }}
                   >
                     Done
@@ -90,13 +141,48 @@ export function RequestQuote() {
                 <>
                   <h3 className="text-lg font-semibold">Request your quote</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Send us your custom design — {config.width}′×{config.length}′×
+                    Send us your custom design — {config.width}′×{config.length}
+                    ′×
                     {config.height}′ steel building.
                   </p>
-                  <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-                    <Field id="name" label="Full name" />
-                    <Field id="email" label="Email" type="email" />
-                    <Field id="zip" label="Project ZIP code" />
+
+                  {serverError && (
+                    <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{serverError}</span>
+                    </div>
+                  )}
+
+                  <form
+                    onSubmit={handleSubmit(onSubmit)}
+                    noValidate
+                    className="mt-5 space-y-4"
+                  >
+                    <Field
+                      id="name"
+                      label="Full name"
+                      error={errors.name?.message}
+                      {...register("name")}
+                    />
+                    <Field
+                      id="email"
+                      label="Email"
+                      type="email"
+                      error={errors.email?.message}
+                      {...register("email")}
+                    />
+                    <Field
+                      id="phone"
+                      label="Phone (optional)"
+                      type="tel"
+                      error={errors.phone?.message}
+                      {...register("phone")}
+                    />
+                    <Field
+                      id="postal"
+                      label="Project postal / ZIP code (optional)"
+                      {...register("postal")}
+                    />
                     <div className="space-y-1.5">
                       <Label htmlFor="notes">Notes (optional)</Label>
                       <textarea
@@ -104,10 +190,24 @@ export function RequestQuote() {
                         rows={3}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         placeholder="Timeline, site details, etc."
+                        {...register("notes")}
                       />
+                      {errors.notes?.message && (
+                        <p className="text-xs text-destructive">
+                          {errors.notes.message}
+                        </p>
+                      )}
                     </div>
-                    <Button type="submit" className="w-full" size="lg">
-                      Submit request
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      size="lg"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
+                      {isSubmitting ? "Submitting…" : "Submit request"}
                     </Button>
                   </form>
                 </>
@@ -120,26 +220,26 @@ export function RequestQuote() {
   );
 }
 
-function Field({
-  id,
-  label,
-  type = "text",
-}: {
-  id: string;
-  label: string;
-  type?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <input
-        id={id}
-        type={type}
-        required
-        className={cn(
-          "w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        )}
-      />
-    </div>
-  );
-}
+const Field = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    label: string;
+    error?: string;
+  }
+>(({ id, label, error, ...props }, ref) => (
+  <div className="space-y-1.5">
+    <Label htmlFor={id}>{label}</Label>
+    <input
+      id={id}
+      ref={ref}
+      aria-invalid={!!error}
+      className={cn(
+        "w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        error ? "border-destructive" : "border-input",
+      )}
+      {...props}
+    />
+    {error && <p className="text-xs text-destructive">{error}</p>}
+  </div>
+));
+Field.displayName = "Field";
