@@ -26,7 +26,7 @@ export function Header() {
           </p>
         </div>
         <Badge variant="muted" className="ml-1 hidden md:inline-flex">
-          Beta
+          v1.1.0 Beta
         </Badge>
       </motion.div>
 

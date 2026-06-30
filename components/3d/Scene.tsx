@@ -7,9 +7,11 @@ import {
   Environment,
   ContactShadows,
   Sky,
+  Grid,
   Center,
 } from "@react-three/drei";
 import { Building } from "./Building";
+import { Ground } from "./Ground";
 import { useBuilding } from "@/lib/store";
 
 function Lights() {
@@ -37,7 +39,8 @@ function Lights() {
 }
 
 export default function Scene() {
-  const { config } = useBuilding();
+  const { config, view } = useBuilding();
+  const bp = view.blueprint;
   // distance scales with the building so it always frames nicely
   const reach = Math.max(config.width, config.length, config.height);
 
@@ -48,45 +51,61 @@ export default function Scene() {
       camera={{ position: [reach * 1.2, reach * 0.8, reach * 1.4], fov: 40 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
-      <color attach="background" args={["#bfe3ff"]} />
-      <Sky
-        distance={45000}
-        sunPosition={[40, 60, 30]}
-        inclination={0.52}
-        azimuth={0.25}
-        turbidity={5}
-        rayleigh={1.6}
-        mieCoefficient={0.005}
-        mieDirectionalG={0.8}
+      <color attach="background" args={[bp ? "#0b3a78" : "#bfe3ff"]} />
+      {!bp && (
+        <Sky
+          distance={45000}
+          sunPosition={[40, 60, 30]}
+          inclination={0.52}
+          azimuth={0.25}
+          turbidity={5}
+          rayleigh={1.6}
+          mieCoefficient={0.005}
+          mieDirectionalG={0.8}
+        />
+      )}
+      <fog
+        attach="fog"
+        args={[bp ? "#0b3a78" : "#d6ecff", reach * 4.5, reach * 10]}
       />
-      <fog attach="fog" args={["#d6ecff", reach * 4.5, reach * 10]} />
 
       <Lights />
 
       <Center disableY>
-        <Building cfg={config} />
+        <Building cfg={config} view={view} />
       </Center>
 
-      {/* grass ground */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.05, 0]}
-        receiveShadow
-      >
-        <planeGeometry args={[4000, 4000]} />
-        <meshStandardMaterial color="#5d9140" roughness={1} metalness={0} />
-      </mesh>
-      <ContactShadows
-        position={[0, -0.03, 0]}
-        opacity={0.42}
-        scale={Math.max(80, reach * 2.5)}
-        blur={2.4}
-        far={40}
-        resolution={1024}
-        color="#1f3314"
-      />
-
-      <Environment preset="city" />
+      {bp ? (
+        /* blueprint grid floor */
+        <Grid
+          position={[0, -0.04, 0]}
+          args={[400, 400]}
+          cellSize={5}
+          cellThickness={0.7}
+          cellColor="#2f6bb0"
+          sectionSize={25}
+          sectionThickness={1.2}
+          sectionColor="#9fc6ff"
+          fadeDistance={reach * 7}
+          fadeStrength={1.2}
+          infiniteGrid
+        />
+      ) : (
+        <>
+          {/* textured grass ground */}
+          <Ground />
+          <ContactShadows
+            position={[0, -0.03, 0]}
+            opacity={0.42}
+            scale={Math.max(80, reach * 2.5)}
+            blur={2.4}
+            far={40}
+            resolution={1024}
+            color="#1f3314"
+          />
+          <Environment preset="city" />
+        </>
+      )}
 
       <OrbitControls
         makeDefault
